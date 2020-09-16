@@ -94,7 +94,8 @@ function installV2ray()
     wget https://install.direct/go.sh
     bash go.sh
     if [ ! -f /etc/v2ray/config.json ]; then
-        bash <(curl -sL https://raw.githubusercontent.com/xixiaobo/centosShell/master/goV2Ray.sh)
+        wget https://raw.githubusercontent.com/xixiaobo/centosShell/master/goV2Ray.sh
+        bash goV2Ray.sh
         if [ ! -f /etc/v2ray/config.json ]; then
             echo "安装失败，请到 https://hijk.pp.ua 网站反馈"
             exit 1
