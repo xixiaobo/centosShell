@@ -91,8 +91,8 @@ function preinstall()
 function installV2ray()
 {
     echo 安装v2ray...
-    bash <(curl -L -s https://install.direct/go.sh)
-
+    wget https://install.direct/go.sh
+    bash go.sh
     if [ ! -f /etc/v2ray/config.json ]; then
         bash <(curl -sL https://raw.githubusercontent.com/xixiaobo/centosShell/master/goV2Ray.sh)
         if [ ! -f /etc/v2ray/config.json ]; then
