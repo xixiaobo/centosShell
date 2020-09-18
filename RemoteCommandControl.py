@@ -40,12 +40,12 @@ def get_post_data():
 
 
 @app.route('/getAllUserCommandsPath', methods=['GET'])
-def test():
+def getAllUserCommandsPath():
     return allUserCommandsPath
 
 
-@app.route('/remote-control/<userName>', methods=['POST'])
-def register(userName):
+@app.route('/remoteControl/<userName>', methods=['POST'])
+def remoteControl(userName):
     """
         path:userName连接用户名（必填）
         body:{
@@ -59,7 +59,7 @@ def register(userName):
     if userName not in UserInfo:
         result['massage'] = ["用户不存在！"]
         return result
-    if data.get("passWord", "") == UserInfo[userName]:
+    if data.get("passWord", "") != UserInfo[userName]:
         result['massage'] = ["密码错误！"]
         return result
     path = '/'
