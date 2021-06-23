@@ -1,0 +1,235 @@
+#!/bin/bash
+
+##### shell脚本所在目录 #####
+shellPath=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
+
+##### shell脚本名称 #####
+shellName=$(basename $BASH_SOURCE)
+
+##### shell脚本读取的配置文件路径 #####
+configfile="${shellPath}/${shellName%\.*}.conf"
+
+##### shell脚本所在目录的上级目录 #####
+dname=`dirname "$shellPath"`
+
+
+##### 初始化常量为空是按照配置文件中走 #####
+processName=
+processPath=
+startCmd=
+stopCmd=
+restartCmd=
+statusCmd=
+processMonitoring=
+runLogPath=
+
+startCmdArray=()
+
+time=$(date "+%Y%m%d%H%M%S")
+
+##### 开始读取配置文件 #####
+if test -r "${configfile}" 
+then
+	echo 
+	echo -e "\033[42;37m ****************开始读取配置文件**************************** \033[0m"
+	echo -e "\033[42;37m **                                                           \033[0m"
+	oldpath=`pwd`
+	cd ${shellPath}
+	tempconfigfi=.${shellName%\.*}${time}.conf
+	cat ${configfile}|tr -d '\r'|sed 's/^[ ]*//g' |sed '/^#.*\|^$/d' > ${tempconfigfi} 
+	while read line || [[ -n ${line} ]];
+	do
+		line_key="$(echo ${line%%=*}| sed 's/\ //g')"
+		line_value="$(echo ${line#*=}|sed 's/^[ \t]*//g'|sed 's/[ \t]*$//g')"
+		if [ ${#line_value} -ge 2 ];
+		then
+			echo -e "\033[42;37m ** |key: ${line_key} | key_size: ${#line_key} | value: ${line_value} | value_size: ${#line_value} | end \033[0m"
+			if [[ "${line_key}" == "startCmd" ]]
+			then
+				startCmd="${line_value}"
+				eval "${line_key}${#startCmdArray[@]}=\"${line_value}\"" 
+				startCmdArray=("${startCmdArray[@]}" "${line_key}${#startCmdArray[@]}")
+			else
+				eval "${line_key}=\"${line_value}\""
+			fi
+			 
+		fi
+
+	done < "${tempconfigfi}"
+	echo -e "\033[42;37m ****************读取配置文件结束**************************** \033[0m"
+	echo 
+	echo 
+	rm -rf "${tempconfigfi}"
+	cd ${oldpath}
+fi
+
+if test -z "$startCmd"
+then
+ echo -e "\033[31m 脚本要运行程序的运行命令没有添加 \033[0m" && exit 1
+fi  
+
+
+if test -z "$processName"
+then
+ processName=${shellName%\.*}
+fi  
+
+if test -z "$processMonitoring"
+then
+ processMonitoring=$startCmd
+fi  
+
+if test -z "$runLogPath"
+then
+ runLogPath=$shellPath/$processName
+fi  
+
+echo 
+echo -e "\033[34m ### 欢迎使用${shellName}脚本,本次运行的相关进程为: ${processName} ### \033[0m"
+echo 
+
+
+
+check_pid(){
+  PID=`ps -ef|grep "$processMonitoring" |grep -v grep | awk '{print $2}'`
+}
+
+
+start_project(){
+  check_pid
+  [[ ! -z ${PID} ]] && echo -e "\033[33m 项目 正在运行 !进程PID为 ${PID} \033[0m" && exit 1
+  if ! test -z "$processPath"
+  then
+   cd $processPath
+  fi 
+  aw="${*:2}"
+  echo
+  if [ ${#startCmdArray[@]} -eq 1 ];
+  then
+	echo
+	echo -e "\033[44;37m ======================================== \n || startCmd: ${startCmd} ${aw[*]} \n ======================================== \033[0m"
+	echo
+	if test -r "${runLogPath}.log" 
+	then
+		mv "${runLogPath}.log" "${runLogPath}-${time}.log"
+	fi
+	eval "nohup  $startCmd ${aw[*]} >> ${runLogPath}.log &"
+	
+	echo -e "\033[44;37m ======================================== \n || log flie: ${runLogPath}.log \n ======================================== \033[0m"
+	echo
+	check_pid
+	if [ -z ${PID} ]
+	then
+		echo -e "\033[32m 项目运行失败，没有找到进程 \033[0m"
+	else
+		echo -e "\033[32m 项目运行成功 PID：${PID} \033[0m" 
+	fi  
+  else
+		num=0 
+		for runCmdkey in ${startCmdArray[@]}
+		do
+			runCmd=$(eval echo '$'${runCmdkey})
+			echo -e "\033[44;37m ========================================\n || runCmd${num}: ${runCmd} ${aw[*]} \n ======================================== \033[0m"
+			if [ -r "${runLogPath}-cmd${num}.log"  ]
+			then
+				mv "${runLogPath}-cmd${num}.log" "${runLogPath}-cmd${num}-${time}.log"
+			fi
+			eval "nohup  $runCmd ${aw[*]} >> ${runLogPath}-cmd${num}.log &"
+			echo			
+			echo -e "\033[44;37m ======================================== \n || log flie ${num}: ${runLogPath}-cmd${num}.log \n ======================================== \033[0m"
+			echo 
+			eval "PID${num}=`ps -ef|grep "$runCmd" |grep -v grep | awk '{print $2}'`" 
+			
+			if [ -z $(eval echo '$PID'${num}) ]
+			then
+				echo -e "\033[44;37m ========================================\n || status${num}: 项目运行失败，没有找到对应的进程\n ======================================== \033[0m"
+			else
+				echo -e "\033[44;37m ========================================\n || status${num}: 项目运行成功 PID：$(eval echo '$PID'${num}) \n ======================================== \033[0m"
+			fi  
+			
+			echo
+			num=$(($num+1)) 
+		done
+  fi  
+  
+}
+
+stop_porject(){
+	check_pid
+	if [ -z ${PID} ]
+	then
+		echo -e "\033[33m \n项目 未运行 !\n \033[0m" 
+	else
+		ps -ef|grep "$processMonitoring" |grep -v grep | awk '{print $2}' |xargs kill -kill
+		check_pid
+		if [ -z ${PID} ]
+		then
+			echo -e "\033[32m \n项目 退出成功 !\n \033[0m"
+		else
+			echo -e "\033[31m \n项目 退出失败 ! 项目运行PID：${PID}\n \033[0m"  && exit 1
+		fi  
+	fi  
+}
+
+restart_project(){
+	stop_porject
+	start_project $*
+}
+
+case "$1" in
+
+ start)
+        start_project $*
+ ;;
+
+ stop)
+        if test -z "$stopCmd"
+		then
+			stop_porject
+		else
+			$stopCmd
+		fi
+		
+ ;;
+
+ status)
+        if [ -z "$statusCmd" ]
+		then			
+			echo
+			echo -e "\033[44;37m ========================================\n || ps grep : ${processMonitoring} \n ======================================== \033[0m"
+			echo
+			check_pid
+			if [ -z ${PID} ]
+			then
+				echo -e "\033[31m \n项目 未运行 !\n \033[0m"
+			else
+				echo -e "\033[32m \n项目 正在运行 ! 项目运行PID：${PID}\n \033[0m"
+			fi
+		else
+			$statusCmd
+		fi
+ ;;
+
+ restart)
+		if [ -z "$restartCmd" ]
+		then
+			if [ -z "$stopCmd" ]
+			then
+				restart_project $*
+			else
+				$stopCmd
+				start_project $*
+			fi
+		else
+			$restartCmd
+		fi
+ ;;
+
+
+ *)
+   echo -e "\033[33m Usage: $shellName {start|stop|restart|status}\n \t start|restart 后可携带参数 \n \033[0m"
+   echo
+   echo
+ ;;
+
+esac
