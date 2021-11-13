@@ -8,7 +8,7 @@ logName='zxfx.log'
 
 pwdPath = `pwd`
 
-projectPath=$pwdPath'/'$projectName
+projectPath=$pwdPath/$projectName
 projectJar=$projectName-$projectVersion'.jar'
 
 time=$(date "+%Y%m%d%H%M%S")
