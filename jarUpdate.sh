@@ -3,21 +3,29 @@
 projectName='projectName'
 projectVersion='0.0.1-SNAPSHOT'
 javaSourceCodePath='/opt/javaSourceCode/'
-projectPath='/opt/dirname/'$projectName
-projectJar=$projectName-$projectVersion'.jar'
 gitPath='git@jar.git'
+logName='zxfx.log'
+
+pwdPath = `pwd`
+
+projectPath=$pwdPath'/'$projectName
+projectJar=$projectName-$projectVersion'.jar'
 
 time=$(date "+%Y%m%d%H%M%S")
 
 check_pid(){
-  PID=`ps -ef|grep $projectPath/$projectJar|grep -v grep | awk '{print $2}'`
+  PID=`ps -ef|grep "$projectPath/$projectJar" |grep -v grep | awk '{print $2}'`
 }
 
 start_project(){
   check_pid
   [[ ! -z ${PID} ]] && echo -e "项目 正在运行 !" && exit 1
   init_project
-  nohup java -Xms10m -Xmx200m -jar $projectPath/$projectJar  >$projectPath/zxfx.log &
+  if test -r "${logName}" 
+	then
+		mv "${logName}" "${logName}-${time}"
+	fi
+  nohup java -Xms$javaXms -Xmx$javaXmx -jar $projectPath/$projectJar  >$projectPath/$logName 2>&1 &
   check_pid
   echo "项目运行PID：${PID}"
 }
@@ -25,13 +33,17 @@ start_project(){
 stop_porject(){
 	check_pid
 	[[ -z ${PID} ]] && echo -e "项目 未运行 !" && exit 1
-	ps -ef|grep $projectPath/$projectJar |grep -v grep | awk '{print $2}' |xargs kill -kill
+	ps -ef|grep "$projectPath/$projectJar" |grep -v grep | awk '{print $2}' |xargs kill -kill
 }
 restart_project(){
 	check_pid
-	[[ ! -z ${PID} ]] && ps -ef|grep $projectPath/$projectJar |grep -v grep | awk '{print $2}' |xargs kill -kill 
+	[[ ! -z ${PID} ]] && ps -ef|grep "$projectPath/$projectJar" |grep -v grep | awk '{print $2}' |xargs kill -kill 
 	init_project
-	nohup java -Xms10m -Xmx200m -jar $projectPath/$projectJar  >$projectPath/zxfx.log &
+	if test -r "${logName}" 
+	then
+		mv "${logName}" "${logName}-${time}"
+	fi
+	nohup java -Xms$javaXms -Xmx$javaXmx -jar $projectPath/$projectJar  >> $projectPath/$logName  2>&1 &
 	check_pid
 	echo "项目运行PID：${PID}"
 }
@@ -47,11 +59,7 @@ update_project()
 		if [ $? -eq 0 ]; then
 			mv $projectPath/$projectJar $projectPath/${projectJar%.*}-$time.jar
 			mv $javaSourceCodePath/$projectName/target/$projectJar $projectPath
-			check_pid
-			[[ ! -z ${PID} ]] && ps -ef|grep $projectPath/$projectJar |grep -v grep | awk '{print $2}' |xargs kill -kill
-			nohup java -Xms10m -Xmx200m -jar $projectPath/$projectJar  >$projectPath/zxfx.log &
-			check_pid
-			echo "项目运行PID：${PID}"
+			restart_project
 		else
 			echo '项目打包失败！'
 		fi
