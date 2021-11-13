@@ -113,7 +113,7 @@ start_project(){
 	then
 		mv "${runLogPath}.log" "${runLogPath}-${time}.log"
 	fi
-	eval "nohup  $startCmd ${aw[*]} >> ${runLogPath}.log &"
+	eval "nohup  $startCmd ${aw[*]} >> ${runLogPath}.log  2>&1 &"
 	
 	echo -e "\033[44;37m ======================================== \n || log flie: ${runLogPath}.log \n ======================================== \033[0m"
 	echo
@@ -134,7 +134,7 @@ start_project(){
 			then
 				mv "${runLogPath}-cmd${num}.log" "${runLogPath}-cmd${num}-${time}.log"
 			fi
-			eval "nohup  $runCmd ${aw[*]} >> ${runLogPath}-cmd${num}.log &"
+			eval "nohup  $runCmd ${aw[*]} >> ${runLogPath}-cmd${num}.log  2>&1 &"
 			echo			
 			echo -e "\033[44;37m ======================================== \n || log flie ${num}: ${runLogPath}-cmd${num}.log \n ======================================== \033[0m"
 			echo 
