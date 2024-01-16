@@ -1,0 +1,1 @@
+rmtrash.sh	开启linux和mac下命令行版本rm的回收站	github：https://github.com/meetbill/linux_tools/tree/master/08_rm
