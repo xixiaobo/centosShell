@@ -54,6 +54,7 @@ function read_config_file() {
 
   enableAgentManage=${enableAgentManage:-false}
   if ${enableAgentManage}; then
+    echo "Agent ssss"
     if test -z "${agentControlCenter}"; then
       if [ -r "${SCRIPT_PATH}/config/application.yml" ]; then
         ymlPath=${SCRIPT_PATH}/config/application.yml
@@ -115,6 +116,20 @@ function read_config_file() {
       echo "配置的clearLogFileCron表达式有误，使用默认配置"
       clearLogFileCron="0 1 * * *"
   fi
+  enableGit=false
+  if  [[ -n "${gitPath}" && -n "${gitBranch}" ]]; then
+    if command -v git >/dev/null 2>&1; then
+      if command -v mvn >/dev/null 2>&1; then
+        javaSourceCodePath="${jarPath}/.source"
+        enableGit=true
+      else
+        echo -e "\033[31m 当前环境没有找到mvn命令, 项目 ${projectName} 无法使用mvn进行打包  \033[0m" >&2
+      fi
+    else
+      echo -e "\033[31m 当前环境没有找到git命令, 项目 ${projectName} 无法使用git进行更新  \033[0m" >&2
+    fi
+  fi
+
 }
 
 function check_pid() {
@@ -308,6 +323,13 @@ function download_java() {
   javaPath="${SCRIPT_PARENT_PATH}/java/bin/java"
 }
 
+function export_java() {
+  javaPath=$(realpath -m  "$(which "${javaPath}")")
+  javaHome=$(dirname "$(dirname "${javaPath}")")
+  export JAVA_HOME="${javaHome}"
+  export PATH=$JAVA_HOME/bin:$PATH
+}
+
 function check_java() {
   # shellcheck disable=SC2001
   java_check_version="$(echo "${javaUseVersion}" | sed 's/\([0-9]*\.[0-9]*\)\..*/\1/')"
@@ -386,6 +408,7 @@ function start_project() {
   check_pid
   [[ -n ${PID} ]] && echo -e "启动项目:\033[33m 项目 正在运行 !进程PID为 ${PID} \033[0m" && exit 0
   check_java
+  export_java
   if [[ ! -f "${jarPath}/${jarName}" ]]; then
       echo -e "\033[31m 没有找到指定运行的jar包: ${jarPath}/${jarName} \033[0m"
       exit 1
@@ -451,87 +474,162 @@ function restart_project() {
 
 
 function update_project() {
-  create_request_variables
-  if [[ -n "${http_cmd}" ]]; then
-    if ! expected_response=$($http_cmd "http://${agentControlCenter}/${checkVersionApi}"); then
-      echo "Error: Failed to get latest version."
-      exit 1
-    fi
-  else
-    if ! expected_response=$(tcp_request "http://${agentControlCenter}/${checkVersionApi}"); then
-      echo "Error: Failed to get latest version."
-      exit 1
-    fi
-  fi
-  if [ "${expected_response:0:8}" == "version=" ] ;then
-    latest_version=${expected_response:8}
-  else
-    echo "Error: Failed to get latest version."
-    exit 1
-  fi
-
-  if [ -r $"version" ]; then
-    current_version=$(cat version)
-  else
-    current_version=-1
-  fi
-
-  if [ ${current_version} == -1 ] || [ "$latest_version" != "$current_version" ]; then
-    # download the latest jar file and check if the download was successful
-    if [[ -n "${download_cmd}" ]]; then
-      if ! $download_cmd "download-${RUN_TIME}.jar" "http://${agentControlCenter}/${downloadAgentApi}"; then
-        echo "Error: Failed to download latest jar file.update error"
-        exit 1
-      fi
-    else
-      if ! tcp_request -0 "download-${RUN_TIME}.jar" "http://${agentControlCenter}/${downloadAgentApi}"; then
-        echo "Error: Failed to download latest jar file.update error"
-        exit 1
-      fi
-    fi
-    if ! command -v unzip &>/dev/null; then
-      echo "无法找到 unzip 命令，跳过检查jar包"
-    else
-      tmp_dir=$(mktemp -d)
-      # 解压 jar 包到临时目录
-      if unzip "download-${RUN_TIME}.jar" -d "$tmp_dir" >/dev/null; then
-        # 检查解压后的目录中是否包含必要的类文件和配置文件
-        if [ -f "$tmp_dir/META-INF/MANIFEST.MF" ]; then
-          echo "下载的文件可以正常运行"
-          rm -rf "$tmp_dir"
-        else
-          echo "下载的文件缺少必要的类文件或配置文件，更新失败"
-          rm -rf "$tmp_dir"
+  if ${enableAgentManage}; then
+    create_request_variables
+      if [[ -n "${http_cmd}" ]]; then
+        if ! expected_response=$($http_cmd "http://${agentControlCenter}/${checkVersionApi}"); then
+          echo "Error: Failed to get latest version."
           exit 1
         fi
       else
-        echo "文下载的文件解压失败，更新失败"
-        rm -rf "$tmp_dir"
+        if ! expected_response=$(tcp_request "http://${agentControlCenter}/${checkVersionApi}"); then
+          echo "Error: Failed to get latest version."
+          exit 1
+        fi
+      fi
+      if [ "${expected_response:0:8}" == "version=" ] ;then
+        latest_version=${expected_response:8}
+      else
+        echo "Error: Failed to get latest version."
         exit 1
       fi
-    fi
-    if test -r "${jarName}"; then
-      if [ ! -d "old-jar" ]; then
-        mkdir old-jar
-      fi
-      mv "${jarName}" "old-jar/${jarName%.jar}_old_${RUN_TIME}.jar"
-    fi
-    # replace the old jar file with the new one
-    mv "download-${RUN_TIME}.jar" "${jarName}"
-    echo "Successfully updated to version $latest_version."
-    if [ ! -r "config/application.yml" ]; then
-      mkdir config
 
-      if [[ -n "${download_cmd}" ]]; then
-        $download_cmd config/application.yml "http://${agentControlCenter}/${downloadAgentDefaultConfigApi}"
+      if [ -r $"version" ]; then
+        current_version=$(cat version)
       else
-        tcp_request -0 config/application.yml "http://${agentControlCenter}/${downloadAgentDefaultConfigApi}"
+        current_version=-1
       fi
-    fi
+
+      if [ ${current_version} == -1 ] || [ "$latest_version" != "$current_version" ]; then
+        # download the latest jar file and check if the download was successful
+        if [[ -n "${download_cmd}" ]]; then
+          if ! $download_cmd "download-${RUN_TIME}.jar" "http://${agentControlCenter}/${downloadAgentApi}"; then
+            echo "Error: Failed to download latest jar file.update error"
+            exit 1
+          fi
+        else
+          if ! tcp_request -0 "download-${RUN_TIME}.jar" "http://${agentControlCenter}/${downloadAgentApi}"; then
+            echo "Error: Failed to download latest jar file.update error"
+            exit 1
+          fi
+        fi
+        if ! command -v unzip &>/dev/null; then
+          echo "无法找到 unzip 命令，跳过检查jar包"
+        else
+          tmp_dir=$(mktemp -d)
+          # 解压 jar 包到临时目录
+          if unzip "download-${RUN_TIME}.jar" -d "$tmp_dir" >/dev/null; then
+            # 检查解压后的目录中是否包含必要的类文件和配置文件
+            if [ -f "$tmp_dir/META-INF/MANIFEST.MF" ]; then
+              echo "下载的文件可以正常运行"
+              rm -rf "$tmp_dir"
+            else
+              echo "下载的文件缺少必要的类文件或配置文件，更新失败"
+              rm -rf "$tmp_dir"
+              exit 1
+            fi
+          else
+            echo "文下载的文件解压失败，更新失败"
+            rm -rf "$tmp_dir"
+            exit 1
+          fi
+        fi
+        if test -r "${jarName}"; then
+          if [ ! -d "old-jar" ]; then
+            mkdir old-jar
+          fi
+          mv "${jarName}" "old-jar/${jarName%.jar}_old_${RUN_TIME}.jar"
+        fi
+        # replace the old jar file with the new one
+        mv "download-${RUN_TIME}.jar" "${jarName}"
+        echo "Successfully updated to version $latest_version."
+        if [ ! -r "config/application.yml" ]; then
+          mkdir config
+
+          if [[ -n "${download_cmd}" ]]; then
+            $download_cmd config/application.yml "http://${agentControlCenter}/${downloadAgentDefaultConfigApi}"
+          else
+            tcp_request -0 config/application.yml "http://${agentControlCenter}/${downloadAgentDefaultConfigApi}"
+          fi
+        fi
+      else
+        echo "Already up-to-date with the latest version."
+      fi
+  elif ${enableGit}; then
+      git_init_project
+      git pull
+      mvn clean
+      mvn package
+      if [ $? -eq 0 ]; then
+        if test -r "${jarPath}/${jarName}"
+        then
+          if [ ! -d "${jarPath}/old-jar" ]; then
+            mkdir -p "${jarPath}/old-jar"
+          fi
+          mv "${jarPath}/${jarName}" "${jarPath}/old-jar/${jarName%.*}-${RUN_TIME}.jar"
+        fi
+        if [[ -z "${mvnPackageTarget}" ]]; then
+            mvnPackageTarget="target/${jarName%.*}*.jar"
+        fi
+        mv "${javaSourceCodePath}/${gitProjectName}/${mvnPackageTarget}" "${jarPath}/${jarName}"
+        echo '项目更新成功！请执行命令重启'
+      else
+        echo '项目打包失败！'
+      fi
   else
-    echo "Already up-to-date with the latest version."
+    help_fun
   fi
+
   exit 0
+}
+git_init_project()
+{
+  check_java
+  export_java
+	if [ ! -d "${javaSourceCodePath}" ]; then
+		mkdir -p "${javaSourceCodePath}"
+	fi
+  if [[ -z "${gitProjectName}" ]]; then
+      gitProjectName=${jarName%.*}
+  fi
+	if [ ! -d "${javaSourceCodePath}/${gitProjectName}" ]; then
+		echo '项目源代码文件夹不存在'
+		cd "${javaSourceCodePath}" || {
+        echo -e "\033[31m 无法进入指定目录: ${javaSourceCodePath} \033[0m"
+        exit 1
+      }
+		echo '正在下载项目源代码'
+		git clone "$gitPath"
+	fi
+	if [ ! -d "${javaSourceCodePath}/${gitProjectName}" ]; then
+		echo '项目代码文件夹未下载成功，请检查原因'
+		exit 1
+	else
+		cd "${javaSourceCodePath}/${gitProjectName}" || {
+            echo -e "\033[31m 无法进入指定目录: ${javaSourceCodePath} \033[0m"
+            exit 1
+          }
+		### 检查切换分支 start ####
+		isHead=$(git rev-parse --abbrev-ref HEAD | grep "${gitBranch}$")
+		if [ -z "${isHead}" ]
+		then
+			hasLocalBranch=$(git branch |grep "${gitBranch}$")
+			if [ -z "${hasLocalBranch}" ]
+			then
+				hasRangeBranch=$(git branch -r |grep "${gitBranch}$")
+				if [ -z "${hasRangeBranch}" ]
+				then
+					echo "远程没有这个分支请检查"
+					exit 1
+				else
+					git checkout -b "${gitBranch} origin/${gitBranch}"
+				fi
+			else
+				git checkout "${gitBranch}"
+			fi
+		fi
+		### 检查切换分支 end ####
+	fi
 }
 
 function enable_schedule_task() {
@@ -704,7 +802,7 @@ Options:
   clear-log       清理项目运行日志，只有日志大于 ${runLogFileMaxSize}M 时才会被清空
   create-conf     创建配置文件
   help            查看命令使用方式
-  update          更新项目-只有项目开启agent管控中心管理是生效
+  update          更新项目-只有项目开启agent管控中心管理或者配置了git相关时生效
   renewScript     更新运行脚本文件-只有项目开启agent管控中心管理是生效
   undeploy        卸载项目
 
@@ -750,11 +848,7 @@ case "$action" in
     disable_schedule_task
     ;;
   update)
-    if ${enableAgentManage}; then
-      update_project
-    else
-      help_fun
-    fi
+    update_project
     ;;
   renewScript)
     if ${enableAgentManage}; then
