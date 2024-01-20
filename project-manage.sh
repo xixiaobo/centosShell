@@ -302,7 +302,6 @@ enable_schedule_task() {
   else
     echo "无法读写/etc/crontab文件,无法进行定时任务开启操作"
   fi
-  exit 0
 }
 
 disable_schedule_task() {
@@ -317,7 +316,6 @@ disable_schedule_task() {
   else
     echo "无法读写/etc/crontab文件,无法进行定时任务关闭操作"
   fi
-  exit 0
 }
 
 
@@ -330,7 +328,7 @@ check_pid() {
   if [[ "${processCheckType}" == "name" ]]; then
     local processName
     processName="$(get_work_process_name "${work}")"
-    pid=$(grep -lE "${processName}" /proc/[0-9]*/cmdline 2>/dev/null | xargs ls -l 2>/dev/null   | awk -F'/' '{print $(NF-1)}'|grep -v "${SCRIPT_PID}")
+    pid=$(grep -lE "${processName}" /proc/[0-9]*/cmdline 2>/dev/null | xargs -I {} ls -l {} 2>/dev/null   | awk -F'/' '{print $(NF-1)}'|grep -v "${SCRIPT_PID}")
     echo "${pid}"
   else
     local processPort

@@ -134,7 +134,7 @@ function read_config_file() {
 
 function check_pid() {
   if [[ "${processCheckType}" == "name" ]]; then
-    PID=$(grep -lE "${processName}" /proc/[0-9]*/cmdline 2>/dev/null | xargs ls -l 2>/dev/null   | awk -F'/' '{print $(NF-1)}' |grep -v "${SCRIPT_PID}")
+    PID=$(grep -lE "${processName}" /proc/[0-9]*/cmdline 2>/dev/null | xargs -I {} ls -l {} 2>/dev/null   | awk -F'/' '{print $(NF-1)}' |grep -v "${SCRIPT_PID}")
   else
     if [[ -n "${processPort}" ]]; then
       if command -v netstat >/dev/null 2>&1; then
@@ -361,7 +361,7 @@ function log_project() {
     tail -30f "${runLogPath}.log"
   else
     echo "没有找到日志文件 ${runLogPath}.log"
-    exit 1
+    return 1
   fi
 }
 
@@ -406,7 +406,7 @@ function clear_log(){
 
 function start_project() {
   check_pid
-  [[ -n ${PID} ]] && echo -e "启动项目:\033[33m 项目 正在运行 !进程PID为 ${PID} \033[0m" && exit 0
+  [[ -n ${PID} ]] && echo -e "启动项目:\033[33m 项目 正在运行 !进程PID为 ${PID} \033[0m" && return 0
   check_java
   export_java
   if [[ ! -f "${jarPath}/${jarName}" ]]; then
@@ -449,7 +449,7 @@ function stop_project() {
     if [ -z "${PID}" ]; then
       echo -e "\n停止运行:\033[32m 项目 退出成功 !\n \033[0m"
     else
-      echo -e "\n停止运行:\033[31m 项目 退出失败 ! 项目运行PID:${PID}\n \033[0m" && exit 1
+      echo -e "\n停止运行:\033[31m 项目 退出失败 ! 项目运行PID:${PID}\n \033[0m" && return 1
     fi
   fi
 }
@@ -464,7 +464,6 @@ function status_project() {
   else
     echo -e "\033[32m \n项目 正在运行 ! 项目运行PID:${PID}\n \033[0m"
   fi
-  exit 0
 }
 
 function restart_project() {
@@ -580,7 +579,7 @@ function update_project() {
     help_fun
   fi
 
-  exit 0
+  return 0
 }
 git_init_project()
 {
@@ -673,7 +672,6 @@ function disable_schedule_task() {
   else
     echo "无法读写/etc/crontab文件,无法进行定时任务关闭操作"
   fi
-  exit 0
 }
 
 function renew_script() {
@@ -711,7 +709,6 @@ function renew_script() {
     fi
   fi
   echo "脚本更新完毕"
-  exit 0
 }
 
 
@@ -730,7 +727,6 @@ function undeploy() {
   mv ./del_old/agentAction* ./
   rm -rf ./del_old
   echo "卸载完成"
-  exit 0
 }
 
 function generate_conf_template() {

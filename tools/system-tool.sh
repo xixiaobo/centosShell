@@ -484,7 +484,7 @@ function show_process_info() {
             1)
               local processName
               processName=$(prompt_input "请输入进程名称或关键字: ") || return 1
-              pids=$(grep -lE "${processName}" /proc/[0-9]*/cmdline 2>/dev/null | xargs ls -l 2>/dev/null   | awk -F'/' '{print $(NF-1)}' |grep -v "${SCRIPT_PID}")
+              pids=$(grep -lE "${processName}" /proc/[0-9]*/cmdline 2>/dev/null | xargs -I {} ls -l {} 2>/dev/null   | awk -F'/' '{print $(NF-1)}' |grep -v "${SCRIPT_PID}")
               choice_msg="进程名称或关键字:${processName}"
               break
               ;;
