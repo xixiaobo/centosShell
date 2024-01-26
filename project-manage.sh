@@ -123,18 +123,27 @@ runCmd=echo "project run"
 EOF
 }
 
-read_config_files() {
-  if [[ ! -f "${config_dir}readonly.conf.template" ]]; then
-    generate_readonly_template "${config_dir}readonly.conf.template"
-    chmod 444 "${config_dir}readonly.conf.template"
-  fi
-  for file in "$config_dir"*.conf; do
-      if [[ -f "$file" ]]; then
-          read_config_file "$file"
-      fi
+sort_work_by_priority() {
+  local works=()
+  for key in "${!config[@]}"; do
+     if [[ $key =~ ^([^|]+)\|configPath$ ]]; then
+         work="${BASH_REMATCH[1]}"
+         priority="$(get_config_value "${work}" "priority" "0")"
+         if ! [[ -n $priority && "$priority" =~ ^[0-9]+$ ]]; then
+            priority="0"
+         fi
+         works+=("$priority|${work}")
+     fi
   done
-  sort_work_by_priority
+  if [ ${#works[@]} -gt 0 ]; then
+    IFS=$'\n'
+    while read -r line; do works_sorted+=("$line"); done < <(sort -t'|' -rnk1 <<<"${works[*]}")
+    unset IFS
+  fi
+
 }
+
+
 
 # Function to read a single configuration file
 read_config_file() {
@@ -165,21 +174,17 @@ read_config_file() {
 }
 
 
-sort_work_by_priority() {
-  local works=()
-  for key in "${!config[@]}"; do
-     if [[ $key =~ ^([^|]+)\|configPath$ ]]; then
-         work="${BASH_REMATCH[1]}"
-         priority="$(get_config_value "${work}" "priority" "0")"
-         if ! [[ -n $priority && "$priority" =~ ^[0-9]+$ ]]; then
-            priority="0"
-         fi
-         works+=("$priority|${work}")
-     fi
+read_config_files() {
+  if [[ ! -f "${config_dir}readonly.conf.template" ]]; then
+    generate_readonly_template "${config_dir}readonly.conf.template"
+    chmod 444 "${config_dir}readonly.conf.template"
+  fi
+  for file in "$config_dir"*.conf; do
+      if [[ -f "$file" ]]; then
+          read_config_file "$file"
+      fi
   done
-  IFS=$'\n'
-  while read -r line; do works_sorted+=("$line"); done < <(sort -t'|' -rnk1 <<<"${works[*]}")
-  unset IFS
+  sort_work_by_priority
 }
 
 
@@ -321,6 +326,7 @@ disable_schedule_task() {
 
 check_pid() {
   local work="$1"
+   [[ -z ${work} ]] && { echo -e "\033[32m 查询项目进程id 不能传递为空的项目名称 \033[0m" ; return; }
   local startsecs
   local processCheckType
   processCheckType="$(get_config_value "${work}" "processCheckType" "name")"
@@ -328,6 +334,7 @@ check_pid() {
   if [[ "${processCheckType}" == "name" ]]; then
     local processName
     processName="$(get_work_process_name "${work}")"
+    [[ -z ${processName} ]] && { echo -e "\033[32m 查询项目进程id 项目 ${work} 的进程名称获取为空 无法进行进程检测  \033[0m" ; return; }
     pid=$(grep -lE "${processName}" /proc/[0-9]*/cmdline 2>/dev/null | xargs -I {} ls -l {} 2>/dev/null   | awk -F'/' '{print $(NF-1)}'|grep -v "${SCRIPT_PID}")
     echo "${pid}"
   else
@@ -354,6 +361,7 @@ check_pid() {
 }
 start_project() {
   local work="$1"
+  [[ -z ${work} ]] && { echo -e "\033[32m 启动项目 不能传递为空的项目名称 \033[0m" ; return; }
   local PID
   PID="$(check_pid "${work}")"
   [[ -n ${PID} ]] && { echo -e "启动项目：\033[33m ${work} 正在运行 !进程PID为 ${PID} \033[0m" ; return; }
@@ -404,6 +412,7 @@ start_project() {
 
 stop_project() {
   local work="$1"
+  [[ -z ${work} ]] && { echo -e "\033[32m 停止项目 不能传递为空的项目名称 \033[0m" ; return; }
   local PID
   PID="$(check_pid "${work}")"
   if [ -z "${PID}" ]; then
@@ -427,7 +436,7 @@ stop_project() {
       for pid in ${PID}; do
         kill "$pid"
       done
-      echo " ${RUN_TIME} - ${user} - 执行停止命令: 循环 kill pid -- ${PID} " >> "${work_log_file}"  2>&1
+      echo " ${RUN_TIME} - ${user} - 执行停止命令: 循环 kill pid ==== pids( ${PID} )" >> "${work_log_file}"  2>&1
     else
       local work_directory
       work_directory="$(get_config_value "${work}" "directory" "${work_log_directory}")"
@@ -453,6 +462,7 @@ stop_project() {
 
 restart_project() {
   local work="$1"
+  [[ -z ${work} ]] && { echo -e "\033[32m 重启项目 不能传递为空的项目名称 \033[0m" ; return; }
   local restart_cmd
   local user
   restart_cmd="$(get_config_value "${work}" "restartCmd")"
@@ -498,6 +508,7 @@ restart_project() {
 
 status_project() {
   local work="$1"
+  [[ -z ${work} ]] && { echo -e "\033[32m 查看项目状态 不能传递为空的项目名称 \033[0m" ; return; }
   local PID
   PID="$(check_pid "${work}")"
   if [ -z "${PID}" ]; then
@@ -574,12 +585,16 @@ action_options:
   clear-log-cron  定时清理项目运行日志任务，通过参数 enable 开启和 disable 关闭
   help            查看命令使用方式
   config-help     查看项目配置文件编写说明
-work_options:
 EOF
-for item in "${works_sorted[@]}"; do
-   work="${item#*|}"
-   echo "  - $work "
-done
+  if [ ${#works_sorted[@]} -gt 0 ]; then
+    echo "work_options:"
+    for item in "${works_sorted[@]}"; do
+       work="${item#*|}"
+       echo "  - $work "
+    done
+  else
+    echo "没有在配置目录 ${config_dir} 中找到项目配置"
+  fi
 }
 #### 脚本方法定义 END ####
 
@@ -602,15 +617,20 @@ case "$action" in
            exit 1
        fi
     else
-     for item in "${works_sorted[@]}"; do
-         work="${item#*|}"
-         execute_command "${work}" "$action"
-     done
+      if [ ${#works_sorted[@]} -gt 0 ]; then
+        for item in "${works_sorted[@]}"; do
+          work="${item#*|}"
+          execute_command "${work}" "$action"
+        done
+      else
+          echo "没有在配置目录 ${config_dir} 中找到项目配置"
+      fi
     fi
     ;;
   log)
     if [[ "$2" ]]; then
       work="$2"
+      [[ -z ${work} ]] && { echo -e "\033[32m 不能传递为空的项目名称 \033[0m" ; return; }
       work_log_file="$(get_config_value "${work}" "logFile" "${log_directory}/${work}/run.log")"
       if [[ -f "${work_log_file}" ]]; then
           echo "\n使用命令: tail -f ${work_log_file}\n\n"
@@ -625,6 +645,7 @@ case "$action" in
   clear-log)
     if [[ "$2" ]]; then
        work="$2"
+       [[ -z ${work} ]] && { echo -e "\033[32m 不能传递为空的项目名称 \033[0m" ; return; }
        config_key="$work|configPath"
        if [[ "${config[$config_key]}" ]]; then
          clear_log "${work}"
@@ -633,10 +654,14 @@ case "$action" in
          exit 1
        fi
     else
-     for item in "${works_sorted[@]}"; do
-         work="${item#*|}"
-         clear_log "${work}"
-     done
+      if [ ${#works_sorted[@]} -gt 0 ]; then
+        for item in "${works_sorted[@]}"; do
+          work="${item#*|}"
+          clear_log "${work}"
+        done
+      else
+          echo "没有在配置目录 ${config_dir} 中找到项目配置"
+      fi
      if [[ -f "${log_directory}/${SCRIPT_NAME%\.*}-crontab.log" ]]; then
          # shellcheck disable=SC2012
          file_size="$(ls -l -f "${log_directory}/${SCRIPT_NAME%\.*}-clear-log-crontab.log" | awk '{ print $5 }')"
