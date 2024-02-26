@@ -342,7 +342,7 @@ check_pid() {
     processPort="$(get_config_value "${work}" "processPort")"
     if [[ -n "${processPort}" ]]; then
       if command -v netstat >/dev/null 2>&1; then
-        pid=$(netstat -nlp | grep ":$processPort" | awk '{print $7}' | sed 's/[^0-9]//g')
+        pid=$(netstat -nlp | grep ":$processPort " | awk '{print $7}' | sed 's/[^0-9]//g')
       else
         local hex_process_port
         hex_process_port=$(printf "%04X" "${processPort}")

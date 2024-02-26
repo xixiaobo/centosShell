@@ -138,7 +138,7 @@ function check_pid() {
   else
     if [[ -n "${processPort}" ]]; then
       if command -v netstat >/dev/null 2>&1; then
-        PID=$(netstat -nlp | grep ":$processPort" | awk '{print $7}' | sed 's/[^0-9]//g')
+        PID=$(netstat -nlp | grep ":$processPort " | awk '{print $7}' | sed 's/[^0-9]//g')
       else
         local hex_process_port
         hex_process_port=$(printf "%04X" "${processPort}")
